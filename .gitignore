@@ -1,0 +1,61 @@
+# Python caches & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+
+# Compiled binaries, native libraries & hashes
+*.exe
+*.dll
+*.pdb
+*.so
+*.dylib
+*.sha256
+
+# Unity generated folders & imported game assets
+unity_fx_recorder/Library/
+unity_fx_recorder/Temp/
+unity_fx_recorder/Logs/
+unity_fx_recorder/Obj/
+unity_fx_recorder/UserSettings/
+unity_fx_recorder/Assets/Textures/
+unity_fx_recorder/Assets/Meshes/
+unity_fx_recorder/Assets/Materials/
+unity_fx_recorder/Assets/Prefabs/
+unity_fx_recorder/ProjectSettings/
+*.meta
+
+# Game assets, packages, media & local working data
+*.lpk
+*.moc3
+*.skel
+*.ab
+*.db
+*.sqlite
+*.ogg
+*.wav
+*.mp3
+*.mp4
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# Intermediate audit reports, caches & local scratch outputs
+*_report.json
+*_cache.json
+doll_audit_progress.json
+live2d_touch_audit_raw.json
+workshop_upload_manifest.json
+workshop_upload_state.json
+_scratch/
+_tmp*/
+_steam_uploader/
+
+# OS & editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
