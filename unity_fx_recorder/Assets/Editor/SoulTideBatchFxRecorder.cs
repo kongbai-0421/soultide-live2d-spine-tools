@@ -111,7 +111,13 @@ public static class SoulTideBatchFxRecorder
         public bool shapeEnabled;
         public int shapeType;
         public float shapeRadius;
+        public int shapeRadiusMode;
+        public float shapeRadiusSpread;
+        public float shapeRadiusSpeed = 1f;
         public float shapeArc;
+        public int shapeArcMode;
+        public float shapeArcSpread;
+        public float shapeArcSpeed = 1f;
         public float shapeAngle = 25f;
         public float shapeRadiusThickness = 1f;
         public float shapeRandomDir;
@@ -940,12 +946,18 @@ public static class SoulTideBatchFxRecorder
             {
                 sh.shapeType = (ParticleSystemShapeType)Mathf.Clamp(n.shapeType, 0, 20);
                 sh.radius = n.shapeRadius;
+                if (n.shapeRadiusMode >= 0 && n.shapeRadiusMode <= 3) sh.radiusMode = (ParticleSystemShapeMultiModeValue)n.shapeRadiusMode;
+                if (n.shapeRadiusSpread > 0f) sh.radiusSpread = n.shapeRadiusSpread;
+                if (Mathf.Abs(n.shapeRadiusSpeed) > 1e-5f) sh.radiusSpeed = n.shapeRadiusSpeed;
                 sh.angle = n.shapeAngle;
                 sh.radiusThickness = n.shapeRadiusThickness;
                 sh.randomDirectionAmount = n.shapeRandomDir;
                 sh.sphericalDirectionAmount = n.shapeSphericalDir;
                 sh.alignToDirection = n.shapeAlignToDir;
                 if (n.shapeArc > 0.01f) sh.arc = n.shapeArc;
+                if (n.shapeArcMode >= 0 && n.shapeArcMode <= 3) sh.arcMode = (ParticleSystemShapeMultiModeValue)n.shapeArcMode;
+                if (n.shapeArcSpread > 0f) sh.arcSpread = n.shapeArcSpread;
+                if (Mathf.Abs(n.shapeArcSpeed) > 1e-5f) sh.arcSpeed = n.shapeArcSpeed;
                 if (n.shapeBox != null && n.shapeBox.Length >= 3)
                     sh.scale = new Vector3(n.shapeBox[0], n.shapeBox[1], n.shapeBox[2]);
                 if (n.shapeRot != null && n.shapeRot.Length >= 3)

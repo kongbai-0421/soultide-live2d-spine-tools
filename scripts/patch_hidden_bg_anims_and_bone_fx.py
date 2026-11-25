@@ -639,55 +639,163 @@ def patch_asuna_s9(cat: dict[str, Any], indexer: AssetIndexer) -> str:
     cfg = json.loads(cfg_p.read_text(encoding="utf-8-sig"))
     skel_p = sub_dir / cfg["skeleton"]
     skel = json.loads(skel_p.read_text(encoding="utf-8-sig"))
-    if any(b["name"] == "asuna_ferris_pivot" for b in skel["bones"]):
-        return "already_patched"
 
-    layout = inspect_bg_prefab_layout(indexer, skin)
-    coord_fn, _, _ = make_exact_coord_mappers(layout, 0.0)
-    # True world pivot = Layer_01 (-20.0, +27.0) + Animation (817.0, 344.5) = (797.0, 371.5) -> dead-center on motianl hub!
-    px, py = coord_fn(797.0, 371.5)
-    px, py = round(px, 2), round(py, 2)
+    # Find node indices for motianl, chexiang (pink), chexiang (1) (yellow), and star (pudding sparkle)
+    chexiang_0_nidx = None
+    chexiang_1_nidx = None
+    star_nidx = None
+    for c in (mf_s or {}).get("clips") or []:
+        if c["layer"] == "back":
+            for i, n in enumerate(c.get("nodes") or []):
+                nm = (n.get("name") or "").strip().lower()
+                if nm == "chexiang":
+                    chexiang_0_nidx = i
+                elif nm == "chexiang (1)":
+                    chexiang_1_nidx = i
+                elif nm == "star":
+                    star_nidx = i
 
-    # Extend existing idle cleanly to ~60s (exact integer multiple of old_dur closest to 60.1s!)
     idle_anim = skel["animations"].setdefault("idle", {})
-    old_dur = max(1.0, animation_duration(idle_anim))
-    mult = max(1, int(round(60.1 / old_dur)))
-    new_dur = round(old_dur * mult, 4)
-    _extend_existing_idle_to(idle_anim, old_dur, new_dur)
-
-    # Add ferris wheel pivot bone under fx_root
-    skel["bones"].insert(2, {"name": "asuna_ferris_pivot", "parent": "fx_root", "x": px, "y": py})
+    b_anims = idle_anim.setdefault("bones", {})
+    s_anims = idle_anim.setdefault("slots", {})
     reparented = 0
     cabins_upright = 0
-    b_anims = idle_anim.setdefault("bones", {})
-    for b in skel["bones"]:
-        bn = b["name"]
-        # Match native particle bone names `nbXX_n{idx}_YY`
-        for ni in ferris_nidxs:
-            if f"_n{ni}_" in bn and b.get("parent") == "fx_root":
-                b["parent"] = "asuna_ferris_pivot"
-                if ni in cabin_nidxs:
-                    # Gondola cabins orbit around pivot while staying upright (matching Unity Billboard particle behavior!)
-                    b["transform"] = "noRotationOrReflection"
-                    cabins_upright += 1
-                if bn in b_anims and "translate" in b_anims[bn]:
-                    for kf in b_anims[bn]["translate"]:
-                        kf["x"] = round(float(kf.get("x", 0.0)) - px, 2)
-                        kf["y"] = round(float(kf.get("y", 0.0)) - py, 2)
-                reparented += 1
-                break
+    already_piv = any(b["name"] == "asuna_ferris_pivot" for b in skel["bones"])
 
-    # Smooth 360° clockwise rotation over new_dur (~60s)
-    b_anims["asuna_ferris_pivot"] = {
-        "rotate": [
-            {"time": 0.0, "angle": 0.0},
-            {"time": round(new_dur / 3.0, 4), "angle": 240.0},
-            {"time": round(2.0 * new_dur / 3.0, 4), "angle": 120.0},
-            {"time": new_dur, "angle": 0.0},
-        ]
-    }
+    if not already_piv:
+        layout = inspect_bg_prefab_layout(indexer, skin)
+        coord_fn, _, _ = make_exact_coord_mappers(layout, 0.0)
+        # True world pivot = Layer_01 (-20.0, +27.0) + Animation (817.0, 344.5) = (797.0, 371.5) -> dead-center on motianl hub!
+        px, py = coord_fn(797.0, 371.5)
+        px, py = round(px, 2), round(py, 2)
+
+        # Extend existing idle cleanly to ~54s/60s (exact integer multiple of old_dur closest to 60.1s!)
+        old_dur = max(1.0, animation_duration(idle_anim))
+        mult = max(1, int(round(60.1 / old_dur)))
+        new_dur = round(old_dur * mult, 4)
+        _extend_existing_idle_to(idle_anim, old_dur, new_dur)
+
+        # Add ferris wheel pivot bone under fx_root
+        skel["bones"].insert(2, {"name": "asuna_ferris_pivot", "parent": "fx_root", "x": px, "y": py})
+        for b in skel["bones"]:
+            bn = b["name"]
+            for ni in ferris_nidxs:
+                if f"_n{ni}_" in bn and b.get("parent") == "fx_root":
+                    b["parent"] = "asuna_ferris_pivot"
+                    if ni in cabin_nidxs:
+                        b["transform"] = "noRotationOrReflection"
+                        cabins_upright += 1
+                    if bn in b_anims and "translate" in b_anims[bn]:
+                        for kf in b_anims[bn]["translate"]:
+                            kf["x"] = round(float(kf.get("x", 0.0)) - px, 2)
+                            kf["y"] = round(float(kf.get("y", 0.0)) - py, 2)
+                    reparented += 1
+                    break
+
+        b_anims["asuna_ferris_pivot"] = {
+            "rotate": [
+                {"time": 0.0, "angle": 0.0},
+                {"time": round(new_dur / 3.0, 4), "angle": 240.0},
+                {"time": round(2.0 * new_dur / 3.0, 4), "angle": 120.0},
+                {"time": new_dur, "angle": 0.0},
+            ]
+        }
+    else:
+        new_dur = max(1.0, animation_duration(idle_anim))
+
+    # Enforce exact official Unity ShapeModule.arc.mode = BurstSpread (3) for both 10-cabin rings!
+    # Official wheel angle = 297.42° (-62.58°); chexiang TF rotZ = +0.043°; chexiang (1) TF rotZ = +16.043°.
+    # Radius = 14.99 * 30 / 0.57 = 788.95 spine px (exact match to motianl rim).
+    wheel_ang = 297.42
+    for b in skel["bones"]:
+        if "_n3_" in b["name"] and b["name"] in b_anims and b_anims[b["name"]].get("rotate"):
+            wheel_ang = float(b_anims[b["name"]]["rotate"][0].get("angle", 297.42))
+            break
+    orbit_r = 788.95
+    cabins_spread = 0
+    for c_nidx, rot_off_deg in ((chexiang_0_nidx, 0.043), (chexiang_1_nidx, 16.043)):
+        if c_nidx is None:
+            continue
+        ring_bones = sorted(
+            [b for b in skel["bones"] if f"_n{c_nidx}_" in b["name"]],
+            key=lambda b: b["name"],
+        )
+        if not ring_bones:
+            continue
+        step_deg = 360.0 / len(ring_bones)
+        for k, b in enumerate(ring_bones):
+            bn = b["name"]
+            b["parent"] = "asuna_ferris_pivot"
+            b["transform"] = "noRotationOrReflection"
+            ang_rad = math.radians(wheel_ang + rot_off_deg + k * step_deg)
+            cx = round(orbit_r * math.cos(ang_rad), 2)
+            cy = round(orbit_r * math.sin(ang_rad), 2)
+            if bn in b_anims and "translate" in b_anims[bn]:
+                for kf in b_anims[bn]["translate"]:
+                    kf["x"] = cx
+                    kf["y"] = cy
+                cabins_spread += 1
+
+    # Align pudding sparkle (`star`, official startDelay=0.9s, life=2.0s, period=6.0s) to gb05_add (`saoguang` 0.06..1.50s)
+    star_shifted = False
+    if star_nidx is not None:
+        star_bones = [b["name"] for b in skel["bones"] if f"_n{star_nidx}_" in b["name"]]
+        for sbn in star_bones:
+            att_kfs = (s_anims.get(sbn) or {}).get("attachment") or []
+            first_on = next((float(k["time"]) for k in att_kfs if k.get("name")), None)
+            if first_on is not None and abs((first_on % 6.0) - 0.9) > 0.05:
+                delta = 0.9 - (first_on % 6.0)
+                # Shift bone translate/scale/rotate timelines
+                ba = b_anims.get(sbn) or {}
+                for track_key, klist in ba.items():
+                    if not isinstance(klist, list):
+                        continue
+                    new_kl = []
+                    for kf in klist:
+                        nk = dict(kf)
+                        nt = round(float(nk.get("time", 0.0)) + delta, 4)
+                        if nt >= 0.0:
+                            nk["time"] = nt
+                            new_kl.append(nk)
+                    if new_kl:
+                        new_kl[-1].pop("curve", None)
+                        ba[track_key] = new_kl
+                # Shift slot attachment/color timelines while preserving t=0.0 hidden sentinel
+                sa = s_anims.get(sbn) or {}
+                if "attachment" in sa:
+                    new_att = [{"time": 0.0, "name": None}]
+                    for kf in sa["attachment"]:
+                        t0 = float(kf.get("time", 0.0))
+                        if t0 == 0.0 or (kf.get("name") is None and abs(t0 % 18.0) < 1e-4):
+                            continue
+                        nt = round(t0 + delta, 4)
+                        if nt > 0.0:
+                            new_att.append({"time": nt, "name": kf.get("name")})
+                    new_att.sort(key=lambda x: x["time"])
+                    sa["attachment"] = new_att
+                if "color" in sa:
+                    new_col = [{"time": 0.0, "color": "ffffff00", "curve": "stepped"}]
+                    for kf in sa["color"]:
+                        t0 = float(kf.get("time", 0.0))
+                        if t0 == 0.0 or (kf.get("color") == "ffffff00" and abs(t0 % 18.0) < 1e-4):
+                            continue
+                        nt = round(t0 + delta, 4)
+                        if nt > 0.0:
+                            nk = dict(kf)
+                            nk["time"] = nt
+                            new_col.append(nk)
+                    new_col.sort(key=lambda x: x["time"])
+                    if new_col:
+                        new_col[-1].pop("curve", None)
+                    sa["color"] = new_col
+                star_shifted = True
+
     skel_p.write_text(json.dumps(skel, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    return f"patched_ferris_wheel (reparented={reparented}, upright_cabins={cabins_upright}, T={new_dur}s)"
+    return (
+        f"patched_ferris_wheel (already_piv={already_piv}, reparented={reparented}, "
+        f"upright_cabins={cabins_upright}, burst_spread_cabins={cabins_spread}, "
+        f"star_phase_aligned={star_shifted}, T={new_dur}s)"
+    )
 
 
 # ---------------------------------------------------------------------------
