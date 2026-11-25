@@ -13,13 +13,14 @@ r"""
   4. 断言保护数据库 `soultide.db` 字节数严格等于 83,886,080
 """
 
+import argparse
 import hashlib
 import json
 import os
 import sys
 import zipfile
 from pathlib import Path
-from typing import List, Set
+from typing import Dict, List, Set
 
 BASE_DIR = Path(r"E:\A灵魂潮汐\Live2D与Spine模型")
 LPK_OUT_ROOT = BASE_DIR / "_workshop_lpks"
@@ -28,6 +29,8 @@ SOULTIDE_DB = Path(r"D:\A灵魂潮汐-本地化\服务器\soultide.db")
 
 CONFIG_MLVE_ZIP_NAME = "1d862f7d02e6008f4550188a31ca654f"
 AVATAR_ZIP_NAME = "4a301072dec6b6a49050e5b294cd7983"
+WS_SKIN_MENU_ROOT = "Menu_WS_Skins"
+WS_SKIN_HOTKEYS = {113, 83}
 
 
 def extract_atlas_page_stems(atlas_text: str) -> List[str]:
@@ -106,13 +109,22 @@ def verify_one_lpk(lpk_path: Path) -> List[str]:
         # 递归检查所有配置
         queue: List[str] = []
         visited: Set[str] = set()
+        char_costume_sets: List[List[str]] = []
+        main_cfg_owner_set: Dict[str, Set[str]] = {}  # cfg_name -> set of costume znames in same character
         for ch in mlve.get("list") or []:
+            c_paths: List[str] = []
             for cos in ch.get("costume") or []:
                 p = cos.get("path", "")
                 if p not in names:
                     errs.append(f"Missing costume config: {cos.get('name')} -> {p}")
                 else:
                     queue.append(p)
+                    c_paths.append(p)
+            char_costume_sets.append(c_paths)
+            if len(c_paths) >= 2 and not is_mega:
+                c_set = set(c_paths)
+                for p in c_paths:
+                    main_cfg_owner_set[p] = c_set
 
         def check_cmd(cmd: str, owner: str):
             if not cmd:
@@ -127,8 +139,11 @@ def verify_one_lpk(lpk_path: Path) -> List[str]:
                     tgt = parts[1]
                     if tgt not in names:
                         errs.append(f"[{owner}] Command '{seg}' missing target {tgt}")
-                    elif tgt not in visited:
-                        queue.append(tgt)
+                    else:
+                        if v in ("change_model", "change_cos") and owner in main_cfg_owner_set and tgt not in main_cfg_owner_set:
+                            main_cfg_owner_set[tgt] = main_cfg_owner_set[owner]
+                        if tgt not in visited:
+                            queue.append(tgt)
                 elif v == "replace_tex" and len(parts) >= 3:
                     tgt = parts[2]
                     if tgt not in names:
@@ -197,6 +212,33 @@ def verify_one_lpk(lpk_path: Path) -> List[str]:
                         for it in idle_items if isinstance(it, dict)
                     ):
                         errs.append(f"[{cfg_name}] Multi-Idle missing default idle_mode equal 0")
+
+                # 多服装角色包主模型必须注入内置切装菜单、F2/S 快捷键及 Tap/语音菜单入口
+                if cfg_name in main_cfg_owner_set:
+                    if WS_SKIN_MENU_ROOT not in mots:
+                        errs.append(f"[{cfg_name}] Missing {WS_SKIN_MENU_ROOT} in multi-costume Live2D")
+                    kt_items = ((cfg.get("Controllers") or {}).get("KeyTrigger") or {}).get("Items") or []
+                    bound_ws = {it.get("Input") for it in kt_items if isinstance(it, dict) and it.get("DownMtn") == WS_SKIN_MENU_ROOT}
+                    if not WS_SKIN_HOTKEYS.issubset(bound_ws):
+                        errs.append(f"[{cfg_name}] Missing F2/S KeyTrigger -> {WS_SKIN_MENU_ROOT}: bound={bound_ws}")
+                    for host_g in ("Tap", "语音菜单"):
+                        if host_g in mots:
+                            for it in mots[host_g]:
+                                chs = it.get("Choices") or []
+                                if not any(isinstance(c, dict) and c.get("NextMtn") == WS_SKIN_MENU_ROOT for c in chs):
+                                    errs.append(f"[{cfg_name}] Live2D {host_g} missing {WS_SKIN_MENU_ROOT} choice")
+                                    break
+                    # 校验本配置内可切到的所有非自身目标服装集合完整覆盖同角色全部服装
+                    reachable_targets: Set[str] = {cfg_name}
+                    for gk, items in mots.items():
+                        if gk.startswith("WS_Skin_") and gk not in ("WS_Skin_Close", "WS_Skin_Stay"):
+                            for it in items or []:
+                                cmd = str(it.get("Command") or "")
+                                if cmd.startswith("change_model "):
+                                    reachable_targets.add(cmd.split()[1])
+                    missing_cos = main_cfg_owner_set[cfg_name] - reachable_targets
+                    if missing_cos:
+                        errs.append(f"[{cfg_name}] WS_Skin_* missing target costume(s): {sorted(missing_cos)}")
             elif "skeleton" in cfg:
                 if cfg["skeleton"] not in names:
                     errs.append(f"[{cfg_name}] Missing skeleton: {cfg['skeleton']}")
@@ -217,7 +259,8 @@ def verify_one_lpk(lpk_path: Path) -> List[str]:
                     for t in texs:
                         if t not in names:
                             errs.append(f"[{cfg_name}] Missing spine texture: {t}")
-                for grp, items in (cfg.get("motions") or {}).items():
+                sp_mots = cfg.get("motions") or {}
+                for grp, items in sp_mots.items():
                     check_multilang_group(grp, items, "language", cfg_name)
                     for it in items or []:
                         if not isinstance(it, dict):
@@ -226,6 +269,31 @@ def verify_one_lpk(lpk_path: Path) -> List[str]:
                             errs.append(f"[{cfg_name}] Missing spine sound {grp}: {it['sound']}")
                         check_cmd(it.get("command", ""), cfg_name)
                         check_cmd(it.get("post_command", ""), cfg_name)
+                if cfg_name in main_cfg_owner_set:
+                    if WS_SKIN_MENU_ROOT not in sp_mots:
+                        errs.append(f"[{cfg_name}] Missing {WS_SKIN_MENU_ROOT} in multi-costume Spine")
+                    if "tap" not in sp_mots:
+                        errs.append(f"[{cfg_name}] Missing Spine 'tap' fallback group")
+                    kt_items = ((cfg.get("controllers") or {}).get("key_trigger") or {}).get("items") or []
+                    bound_ws = {it.get("input") for it in kt_items if isinstance(it, dict) and it.get("down_mtn") == WS_SKIN_MENU_ROOT}
+                    if not WS_SKIN_HOTKEYS.issubset(bound_ws):
+                        errs.append(f"[{cfg_name}] Missing Spine F2/S key_trigger -> {WS_SKIN_MENU_ROOT}: bound={bound_ws}")
+                    if "背景菜单" in sp_mots:
+                        for it in sp_mots["背景菜单"]:
+                            chs = it.get("choices") or []
+                            if not any(isinstance(c, dict) and c.get("next_mtn") == WS_SKIN_MENU_ROOT for c in chs):
+                                errs.append(f"[{cfg_name}] Spine 背景菜单 missing {WS_SKIN_MENU_ROOT} choice")
+                                break
+                    reachable_targets = {cfg_name}
+                    for gk, items in sp_mots.items():
+                        if gk.startswith("WS_Skin_") and gk not in ("WS_Skin_Close", "WS_Skin_Stay"):
+                            for it in items or []:
+                                cmd = str(it.get("command") or "")
+                                if cmd.startswith("change_model "):
+                                    reachable_targets.add(cmd.split()[1])
+                    missing_cos = main_cfg_owner_set[cfg_name] - reachable_targets
+                    if missing_cos:
+                        errs.append(f"[{cfg_name}] Spine WS_Skin_* missing target costume(s): {sorted(missing_cos)}")
             else:
                 errs.append(f"[{cfg_name}] Unrecognized config schema (neither FileReferences nor skeleton)")
 
@@ -233,7 +301,17 @@ def verify_one_lpk(lpk_path: Path) -> List[str]:
 
 
 def main():
+    ap = argparse.ArgumentParser(description="Verify Workshop STD2_0 LPK archives")
+    ap.add_argument("--only", nargs="*", help="仅校验指定角色名列表（不含 .lpk 后缀）")
+    ap.add_argument("--exclude-mega", action="store_true", help="跳过合并总集 灵魂潮汐_全55人偶合集.lpk")
+    args = ap.parse_args()
+
     lpks = sorted(LPK_OUT_ROOT.glob("*.lpk"))
+    if args.exclude_mega:
+        lpks = [p for p in lpks if p.stem != "灵魂潮汐_全55人偶合集"]
+    if args.only:
+        want = set(args.only)
+        lpks = [p for p in lpks if p.stem in want]
     print(f"Verifying {len(lpks)} LPK archive(s)...")
     failed = {}
     for p in lpks:

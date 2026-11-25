@@ -334,15 +334,16 @@
   - `pack_all_dolls_mega_lpk.py`：`--workers <N>`（默认单趟同时产出 55 单人偶包 + 1 份全 55 人偶总集包）、`--mega-only`（仅产总集包）。
 - **核心原理**：
   - **EX 原生四语融合（`merge_multilang_motions`）**：Live2DViewerEX 筛选动作时，若当前语言的 `langPool` 非空则会完全丢弃无语言标签的 `defaultPool`（严禁同组混排！）。因此脚本自动把中/英/日三套独立配置融合为单一主配置：英文省略 `Language`（`""` 全局兜底），并严格对称写入 `"zhs"`、`"zht"`（简繁映射）与 `"ja"` 组，同时融合誓约戒指双语表情名并归一化 `Form_Switch_Main` 指向同一 `.bin3`。
-  - **跨皮肤+跨引擎零重编码音频去重**：对同一角色（或总集包跨全部 55 角色）下所有 Live2D 与 Spine 的 `.ogg` 按 **SHA-256** 内容哈希归入共享 `audio/` 与 `bgm/`，再结合 `STD2_0` 协议的 `MD5(路径)` 条目映射与 Deflate-6 压缩，将源目录 `4,077.68 MiB` 无损压至 `2,238.79 MiB`（`54.90%`）。
+  - **模型内置四语跨引擎切装菜单（`_inject_workshop_costume_menus`）**：针对创意工坊分页仅默认加载 `cosList[0]` 的限制，打包期自动为所有多服装角色（`>= 2` 套）的主模型与变身主形态配置注入四语对称的 `Menu_WS_Skins` 分页菜单（`<= 6` 套直接列表、`> 6` 套自动按 `★ Live2D 服装` / `✦ Spine 服装` 分类分页，全用通用 BMP 符号，零污染散装源目录），叶节点通过 `change_model <target_zip_cfg>` 实现 Live2D ↔ Live2D ↔ Spine 跨引擎原地无缝互切；依托 EX 原生 `CharData.configFile` 自动落盘实现重启记忆与无 Spine DLC 时自动自愈；同时在 Live2D `Tap`/`语音菜单` 顶部、Spine 原生 `"tap"` 空白点击回退组、`背景菜单` 以及零冲突 Windows 热键 **`F2 (113)` / `S (83)`** 挂载直达入口。
+  - **跨皮肤+跨引擎零重编码音频去重**：对同一角色（或总集包跨全部 55 角色）下所有 Live2D 与 Spine 的 `.ogg` 按 **SHA-256** 内容哈希归入共享 `audio/` 与 `bgm/`，再结合 `STD2_0` 协议的 `MD5(路径)` 条目映射与 Deflate-6 压缩，将源目录 `4,077.68 MiB` 无损压至 `2,239.22 MiB`（`54.91%`）。
   - 自动生成 `< 1 MB` 渐变背景预览图（单人偶封面与 11×5 全角色拼图封面）及角色头像，并采用 Zip64 兼容超 2 GiB 总集包。
 - **注意事项**：
   - 打包前务必确认目标角色的 Live2D 与 Spine 已通过 `verify_batch_*` 校验；
   - 暂存目录利用 NTFS 硬链接减少磁盘双倍占用，需确保暂存盘与源目录位于同一 NTFS 分区（跨分区会自动降级为复制）。
 
 ### 6.3 [`scripts/verify_workshop_lpks.py`](../scripts/verify_workshop_lpks.py)
-- **状态**：主力 `.lpk` 端到端完整性校验脚本。
-- **核心原理与校验项**：逐包递归解析 ZIP 与 `STD2_0` 清单 `config.mlve`（`1d862f7d02e6008f4550188a31ca654f`）和头像（`4a301072dec6b6a49050e5b294cd7983`），逐套核查全部 357 套服装及子模型/变身/隐藏背景引用、四语言 `{"", "zhs", "zht", "ja"}` 严格对等（`check_multilang_group`）、多 `Idle` `VarFloats["idle_mode"]` 互斥、Spine `atlases[].tex_names` 与 `.atlas.txt` 页名对齐、`.ogg` 魔数头与零重复条目，以及 `< 1 MB` 封面限制。
+- **状态**：主力 `.lpk` 端到端完整性校验脚本（支持 `--only <角色...>` 定向与 `--exclude-mega`）。
+- **核心原理与校验项**：逐包递归解析 ZIP 与 `STD2_0` 清单 `config.mlve`（`1d862f7d02e6008f4550188a31ca654f`）和头像（`4a301072dec6b6a49050e5b294cd7983`），逐套核查全部 357 套服装及子模型/变身/隐藏背景引用、四语言 `{"", "zhs", "zht", "ja"}` 严格对等（`check_multilang_group`）、多服装主模型与变身形态的 **`Menu_WS_Skins` / `WS_Skin_*` 全服装覆盖 / `F2(113)` & `S(83)` 热键 / Live2D `Tap` & `语音菜单` 与 Spine `"tap"` & `背景菜单` 入口**、多 `Idle` `VarFloats["idle_mode"]` 互斥、Spine `atlases[].tex_names` 与 `.atlas.txt` 页名对齐、`.ogg` 魔数头与零重复条目，以及 `< 1 MB` 封面限制。
 - **注意事项**：任何打包完成后都应运行本脚本确认 `0` 失败后再导入 Live2DViewerEX。
 
 ---

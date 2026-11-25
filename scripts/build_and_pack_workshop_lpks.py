@@ -58,6 +58,134 @@ STORED_EXTS = {".webp", ".png", ".jpg", ".jpeg", ".ogg", ".mp3"}
 L2D_CONFIG_SUFFIX = ".model3.json"
 SPINE_CONFIG_SUFFIX = ".config.json"
 
+# 内置创意工坊切装菜单常量（VK_F2=113, VK_S=83 经全库 367 配置扫描确认零冲突）
+WS_SKIN_HOTKEYS = (113, 83)
+WS_SKIN_PAGE_SIZE = 6
+WS_SKIN_MENU_ROOT = "Menu_WS_Skins"
+WS_SKIN_CLOSE_MTN = "WS_Skin_Close"
+WS_SKIN_STAY_MTN = "WS_Skin_Stay"
+
+FALLBACK_SYNTHETIC_EN_JA: Dict[str, Tuple[str, str]] = {
+    "原皮": ("Default Outfit", "初期衣装"),
+    "原皮(立绘)": ("Default Portrait", "初期衣装（立ち絵）"),
+    "原皮_变身": ("Default (Transformed)", "初期衣装（変身）"),
+    "原皮_柯露雪儿剧情": ("Default (Colcher Story)", "初期衣装（コルシェル）"),
+    "原皮_活动": ("Default (Event)", "初期衣装（イベント）"),
+    "原皮_艾妮斯剧情": ("Default (Ennis Story)", "初期衣装（エニス）"),
+    "夏樱_S2": ("Natsuzakura S2", "夏桜 S2"),
+    "夏樱_S3": ("Natsuzakura S3", "夏桜 S3"),
+    "夏樱_S4": ("Natsuzakura S4", "夏桜 S4"),
+    "夏樱_S5": ("Natsuzakura S5", "夏桜 S5"),
+    "此情无垢": ("Pure Devotion", "無垢なる想い"),
+    "经典_活动": ("Classic (Event)", "クラシック（イベント）"),
+}
+
+
+def load_skin_i18n_maps(skin_names: Set[str]) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """优先调用同目录 prepare_workshop_upload_manifest.load_i18n_name_maps 获取官方英/日译名；
+    若在独立开源环境缺少该模块或译表路径，则自动回退到内置基础映射+原名，保持零外部强依赖。"""
+    zh_to_en: Dict[str, str] = {}
+    zh_to_ja: Dict[str, str] = {}
+    try:
+        import importlib.util
+        mod_path = Path(__file__).resolve().parent / "prepare_workshop_upload_manifest.py"
+        if mod_path.is_file():
+            spec = importlib.util.spec_from_file_location("_ws_manifest_i18n", mod_path)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                loader = getattr(mod, "load_i18n_name_maps", None)
+                if callable(loader):
+                    zh_to_en, zh_to_ja = loader(set(skin_names))
+    except Exception:
+        pass
+    for sk in skin_names:
+        if sk in FALLBACK_SYNTHETIC_EN_JA:
+            en_fb, ja_fb = FALLBACK_SYNTHETIC_EN_JA[sk]
+            zh_to_en.setdefault(sk, en_fb)
+            zh_to_ja.setdefault(sk, ja_fb)
+    return zh_to_en, zh_to_ja
+
+
+def _ws_ui_text(lang: str, key: str, **kw) -> str:
+    table = {
+        "zh": {
+            "entry_both": "◆ 切换服装 ({n}套 · Live2D/Spine)",
+            "entry_single": "◆ 切换服装 ({n}套)",
+            "bg_entry": "❖ 背景显示开关 (F3 / H)",
+            "close": "✕ 关闭菜单",
+            "back_main": "« 返回主语音菜单",
+            "back_cat": "« 返回服装分类",
+            "next_page": "下一页 ({p}/{total}) ▶",
+            "prev_page": "◀ 上一页 ({p}/{total})",
+            "cat_l2d": "★ Live2D 服装 ({n}套 · 无需DLC)",
+            "cat_spine": "✦ Spine 服装 ({n}套 · 需Spine扩展DLC)",
+            "hdr_direct": "【切换服装】共 {n} 套（点击切换并自动记住，快捷键 F2 / S）{dlc}：",
+            "hdr_cat": "【切换服装】共 {n} 套（点击切换并自动记住，随时按 F2 / S 呼出）：",
+            "hdr_l2d": "【Live2D 服装】({p}/{total}) 无需 DLC，点击切换：",
+            "hdr_l2d_1": "【Live2D 服装】无需 DLC，点击即时切换：",
+            "hdr_spine": "【Spine 服装】({p}/{total}) 需安装 Spine 扩展 DLC，点击切换：",
+            "hdr_spine_1": "【Spine 服装】需安装 Spine 扩展 DLC，点击即时切换：",
+            "hdr_tap_sp": "请选择操作（按 F2 / S 快捷切换服装，按 F3 / H 切换背景）：",
+            "dlc_hint": "（Spine 服装需 Spine DLC）",
+            "cur_tag": " (当前)",
+            "stay_toast": "当前已穿着该服装。",
+        },
+        "en": {
+            "entry_both": "◆ Switch Costume ({n} · Live2D/Spine)",
+            "entry_single": "◆ Switch Costume ({n})",
+            "bg_entry": "❖ Background Toggle (F3 / H)",
+            "close": "✕ Close Menu",
+            "back_main": "« Back to Main Menu",
+            "back_cat": "« Back to Categories",
+            "next_page": "Next Page ({p}/{total}) ▶",
+            "prev_page": "◀ Prev Page ({p}/{total})",
+            "cat_l2d": "★ Live2D Costumes ({n} · No DLC)",
+            "cat_spine": "✦ Spine Costumes ({n} · Spine DLC)",
+            "hdr_direct": "[Switch Costume] {n} total (Auto-saved; hotkeys F2 / S){dlc}:",
+            "hdr_cat": "[Switch Costume] {n} total (Auto-saved; press F2 / S anytime):",
+            "hdr_l2d": "[Live2D Costumes] ({p}/{total}) No DLC required:",
+            "hdr_l2d_1": "[Live2D Costumes] No DLC required, tap to switch:",
+            "hdr_spine": "[Spine Costumes] ({p}/{total}) Requires Spine DLC:",
+            "hdr_spine_1": "[Spine Costumes] Requires Spine DLC, tap to switch:",
+            "hdr_tap_sp": "Choose an action (F2 / S: Costumes, F3 / H: Background):",
+            "dlc_hint": " (Spine requires Spine DLC)",
+            "cur_tag": " (Current)",
+            "stay_toast": "Already wearing this costume.",
+        },
+        "ja": {
+            "entry_both": "◆ 衣装切替 (全{n}着 · Live2D/Spine)",
+            "entry_single": "◆ 衣装切替 (全{n}着)",
+            "bg_entry": "❖ 背景表示切替 (F3 / H)",
+            "close": "✕ メニューを閉じる",
+            "back_main": "« メインメニューに戻る",
+            "back_cat": "« カテゴリに戻る",
+            "next_page": "次のページ ({p}/{total}) ▶",
+            "prev_page": "◀ 前のページ ({p}/{total})",
+            "cat_l2d": "★ Live2D 衣装 ({n}着 · DLC不要)",
+            "cat_spine": "✦ Spine 衣装 ({n}着 · 要Spine DLC)",
+            "hdr_direct": "【衣装切替】全 {n} 着（自動保存・F2 / S キー対応）{dlc}：",
+            "hdr_cat": "【衣装切替】全 {n} 着（自動保存・いつでも F2 / S で表示）：",
+            "hdr_l2d": "【Live2D 衣装】({p}/{total}) DLC不要・選択で即切替：",
+            "hdr_l2d_1": "【Live2D 衣装】DLC不要・選択で即切替：",
+            "hdr_spine": "【Spine 衣装】({p}/{total}) Spine DLC必要・選択で即切替：",
+            "hdr_spine_1": "【Spine 衣装】Spine DLC必要・選択で即切替：",
+            "hdr_tap_sp": "メニューを選択（F2 / S：衣装切替、F3 / H：背景切替）：",
+            "dlc_hint": "（Spine衣装はSpine DLC必要）",
+            "cur_tag": "（現在）",
+            "stay_toast": "現在この衣装を着用中です。",
+        },
+    }
+    return table[lang][key].format(**kw)
+
+
+def _lang_bucket(lv: Optional[str]) -> str:
+    if lv in ("zhs", "zht"):
+        return "zh"
+    if lv == "ja":
+        return "ja"
+    return "en"
+
 
 def md5_str(s: str) -> str:
     return hashlib.md5(s.encode("utf-8")).hexdigest()
@@ -342,12 +470,13 @@ def merge_multilang_motions(
 
 
 class DollPacker:
-    def __init__(self, doll: str):
+    def __init__(self, doll: str, skin_i18n: Optional[Tuple[Dict[str, str], Dict[str, str]]] = None):
         self.doll = doll
         self.doll_slug = f"soultide_{md5_str(doll)[:12]}"
         self.stage_dir = STAGING_ROOT / doll
         self.lpk_path = LPK_OUT_ROOT / f"{doll}.lpk"
         self.lpk_preview_path = LPK_OUT_ROOT / f"{doll}.preview.jpg"
+        self.skin_i18n = skin_i18n
 
         # 共享音频去重表 (bucket = "audio" | "bgm")
         # sha256 -> (bucket, shared_filename, src_path, file_size)
@@ -371,10 +500,16 @@ class DollPacker:
         self.file_sha_cache: Dict[Path, Tuple[str, int]] = {}
         # canonical_cfg_abs -> zip_cfg_name
         self.cfg_zip_name_map: Dict[Path, str] = {}
-        # 已处理（写入 zip_entries）的配置文件集合
+        # 已处理（写入 packed_cfg_objs）的配置文件集合
         self.packed_cfgs: Set[Path] = set()
         # 待递归处理的配置队列: (abs_cfg_path, is_live2d)
         self.cfg_queue: List[Tuple[Path, bool]] = []
+        # 服装清单（与 config.mlve costume 顺序一致），用于注入内置切装菜单
+        self.costume_catalog: List[Dict[str, object]] = []
+        # 需要注入切装菜单的主模型配置 zip_name（含根服装 + 变身主形态，不含 submodels）
+        self.main_cfg_znames: Set[str] = set()
+        # 暂存已重写但尚未序列化为 bytes 的配置对象: zname -> (data_dict, is_live2d, silent_motion_zname)
+        self.packed_cfg_objs: Dict[str, Tuple[dict, bool, Optional[str]]] = {}
 
     def get_file_sha(self, path: Path) -> Tuple[str, int]:
         rp = path.resolve()
@@ -447,7 +582,13 @@ class DollPacker:
             self.zip_entries[zname] = (rp, ctype)
         return zname
 
-    def _rewrite_command_for_lpk(self, cmd: str, cfg_dir: Path, is_live2d_owner: bool) -> str:
+    def _rewrite_command_for_lpk(
+        self,
+        cmd: str,
+        cfg_dir: Path,
+        is_live2d_owner: bool,
+        owner_is_main: bool = False,
+    ) -> str:
         if not cmd:
             return cmd
         out_segs: List[str] = []
@@ -465,6 +606,8 @@ class DollPacker:
                 target_is_l2d = target_abs.name.lower().endswith(".model3.json")
                 target_abs = canonical_base_cfg(target_abs, target_is_l2d)
                 z_target = self._register_cfg_name(target_abs, target_is_l2d)
+                if owner_is_main and verb in ("change_model", "change_cos") and "submodels" not in target_abs.parts:
+                    self.main_cfg_znames.add(z_target)
                 parts[1] = z_target
                 out_segs.append(" ".join(parts))
             elif verb == "replace_tex" and len(parts) >= 3:
@@ -476,7 +619,7 @@ class DollPacker:
                 out_segs.append(seg)
         return "; ".join(out_segs)
 
-    def _rewrite_single_cfg_assets(self, cfg_path: Path, is_live2d: bool) -> dict:
+    def _rewrite_single_cfg_assets(self, cfg_path: Path, is_live2d: bool, owner_is_main: bool = False) -> dict:
         cfg_dir = cfg_path.parent
         data = json.loads(cfg_path.read_text(encoding="utf-8-sig"))
         if is_live2d:
@@ -506,9 +649,9 @@ class DollPacker:
                     if it.get("Sound"):
                         it["Sound"] = self._pack_leaf_asset(normalize_rel(cfg_dir, it["Sound"]))
                     if it.get("Command"):
-                        it["Command"] = self._rewrite_command_for_lpk(it["Command"], cfg_dir, True)
+                        it["Command"] = self._rewrite_command_for_lpk(it["Command"], cfg_dir, True, owner_is_main)
                     if it.get("PostCommand"):
-                        it["PostCommand"] = self._rewrite_command_for_lpk(it["PostCommand"], cfg_dir, True)
+                        it["PostCommand"] = self._rewrite_command_for_lpk(it["PostCommand"], cfg_dir, True, owner_is_main)
         else:
             # Spine .config.json
             if data.get("skeleton"):
@@ -533,9 +676,9 @@ class DollPacker:
                     if it.get("sound"):
                         it["sound"] = self._pack_leaf_asset(normalize_rel(cfg_dir, it["sound"]))
                     if it.get("command"):
-                        it["command"] = self._rewrite_command_for_lpk(it["command"], cfg_dir, False)
+                        it["command"] = self._rewrite_command_for_lpk(it["command"], cfg_dir, False, owner_is_main)
                     if it.get("post_command"):
-                        it["post_command"] = self._rewrite_command_for_lpk(it["post_command"], cfg_dir, False)
+                        it["post_command"] = self._rewrite_command_for_lpk(it["post_command"], cfg_dir, False, owner_is_main)
         return data
 
     def _process_cfg_for_lpk(self, cfg_abs: Path, is_live2d: bool) -> None:
@@ -544,14 +687,15 @@ class DollPacker:
             return
         self.packed_cfgs.add(rp)
         zname = self._register_cfg_name(rp, is_live2d)
+        owner_is_main = zname in self.main_cfg_znames
 
-        data = self._rewrite_single_cfg_assets(rp, is_live2d)
+        data = self._rewrite_single_cfg_assets(rp, is_live2d, owner_is_main=owner_is_main)
 
         # 若存在 EN / JA 兄弟配置，按 EX 原生 Motion.Language / motion.language 自动融合进单配置
         p_en, p_ja = find_sibling_lang_cfgs(rp, is_live2d)
         if p_en is not None and p_ja is not None:
-            data_en = self._rewrite_single_cfg_assets(p_en, is_live2d)
-            data_ja = self._rewrite_single_cfg_assets(p_ja, is_live2d)
+            data_en = self._rewrite_single_cfg_assets(p_en, is_live2d, owner_is_main=owner_is_main)
+            data_ja = self._rewrite_single_cfg_assets(p_ja, is_live2d, owner_is_main=owner_is_main)
             if is_live2d:
                 fr_zh = data.get("FileReferences", {})
                 fr_en = data_en.get("FileReferences", {})
@@ -580,7 +724,291 @@ class DollPacker:
                     is_live2d=False,
                 )
 
-        self.zip_entries[zname] = (compact_json_bytes(data), zipfile.ZIP_DEFLATED)
+        silent_zname: Optional[str] = None
+        if is_live2d:
+            mots = (data.get("FileReferences") or {}).get("Motions") or {}
+            for probe_grp in ("Tap", "语音菜单"):
+                for it in mots.get(probe_grp) or []:
+                    if isinstance(it, dict) and it.get("File"):
+                        silent_zname = str(it["File"])
+                        break
+                if silent_zname:
+                    break
+            if not silent_zname:
+                cand = rp.parent / "motions" / "menu_silent.motion3.json"
+                if cand.is_file():
+                    silent_zname = self._pack_leaf_asset(cand)
+
+        self.packed_cfg_objs[zname] = (data, is_live2d, silent_zname)
+
+    def _inject_workshop_costume_menus(self) -> None:
+        """为多服装角色包（>=2套）的每个主模型配置注入原生四语「👗 切换服装」菜单与 F2 / S 快捷键。
+        引擎实锤机制（Assembly-CSharp.dll）：
+          - 菜单叶节点通过 `change_model <target_zip_cfg>` 实现 Live2D ↔ Live2D ↔ Spine 跨引擎原地无缝热切，
+            且切换前 `UpdateModel -> LJKLOPGDMLF` 自动执行 `RemoveSubModel(null)` 彻底清理旧 Spine 子模型；
+          - 加载成功后 `BHNCAHBOMMP.JNAKFCBCIEJ` 自动将 `CharData.configFile` 写入 `SaveData`，
+            重启 EX 或重选工坊条目时自动直载上次所选服装（且无 Spine DLC 时自动清空回退，零死循环）；
+          - Spine 同步注入原生 `"tap"` 空白点击回退组 + `背景菜单` 入口，与 Live2D 保持一致的零记忆交互体验。
+        """
+        catalog = self.costume_catalog
+        total = len(catalog)
+        if total < 2:
+            return
+
+        l2d_items = [c for c in catalog if c["engine"] == "live2d"]
+        sp_items = [c for c in catalog if c["engine"] == "spine"]
+        has_l2d = len(l2d_items) > 0
+        has_spine = len(sp_items) > 0
+        use_categories = (total > WS_SKIN_PAGE_SIZE) and has_l2d and has_spine
+
+        lang_slots = [("", "en"), ("zhs", "zh"), ("zht", "zh"), ("ja", "ja")]
+
+        def skin_label(item: Dict[str, object], lang: str, include_engine: bool, is_cur: bool) -> str:
+            raw = str(item["skin_zh"] if lang == "zh" else (item["skin_ja"] if lang == "ja" else item["skin_en"]))
+            if include_engine:
+                eng_tag = "Live2D" if item["engine"] == "live2d" else "Spine"
+                base = f"[{eng_tag}] {raw}"
+            else:
+                base = raw
+            if is_cur:
+                return f"✓ {base}{_ws_ui_text(lang, 'cur_tag')}"
+            return base
+
+        def make_menu_entry(
+            is_live2d: bool,
+            silent_zname: Optional[str],
+            name: str,
+            text: str,
+            choices: List[Tuple[str, str]],
+            lang_code: str,
+            duration: int = 60000,
+        ) -> dict:
+            if is_live2d:
+                obj: dict = {
+                    "Name": name,
+                    "File": silent_zname or "",
+                    "FadeIn": 0,
+                    "FadeOut": 0,
+                    "Text": text,
+                    "TextDuration": duration,
+                }
+                if choices:
+                    obj["Choices"] = [{"Text": t, "NextMtn": m} for t, m in choices]
+                if lang_code:
+                    obj["Language"] = lang_code
+                return obj
+            else:
+                obj = {
+                    "name": name,
+                    "file": "",
+                    "text": text,
+                    "text_duration": duration,
+                }
+                if choices:
+                    obj["choices"] = [{"text": t, "next_mtn": m} for t, m in choices]
+                if lang_code:
+                    obj["language"] = lang_code
+                return obj
+
+        for cur_zname in sorted(self.main_cfg_znames):
+            rec = self.packed_cfg_objs.get(cur_zname)
+            if rec is None:
+                continue
+            data, is_live2d, silent_zname = rec
+            if is_live2d:
+                fr = data.setdefault("FileReferences", {})
+                mots = fr.setdefault("Motions", {})
+            else:
+                mots = data.setdefault("motions", {})
+
+            has_bg_menu = (not is_live2d) and ("背景菜单" in mots)
+
+            # 1) 静默关闭与「当前服装」提示动作
+            if is_live2d:
+                mots[WS_SKIN_CLOSE_MTN] = [{
+                    "Name": "ws_skin_close",
+                    "File": silent_zname or "",
+                    "FadeIn": 0,
+                    "FadeOut": 0,
+                }]
+            else:
+                mots[WS_SKIN_CLOSE_MTN] = [{"name": "ws_skin_close", "file": ""}]
+
+            mots[WS_SKIN_STAY_MTN] = [
+                make_menu_entry(
+                    is_live2d, silent_zname, "ws_skin_stay",
+                    _ws_ui_text(lang, "stay_toast"), [], lc, duration=2500
+                )
+                for lc, lang in lang_slots
+            ]
+
+            # 2) 为每套非当前目标服装创建 `WS_Skin_<idx>` 切装动作
+            for c in catalog:
+                tgt_z = str(c["zname"])
+                if tgt_z == cur_zname:
+                    continue
+                mtn_key = f"WS_Skin_{int(c['idx']):02d}"
+                if is_live2d:
+                    mots[mtn_key] = [{
+                        "Name": f"ws_skin_{int(c['idx']):02d}",
+                        "File": silent_zname or "",
+                        "FadeIn": 0,
+                        "FadeOut": 0,
+                        "Command": f"change_model {tgt_z}",
+                    }]
+                else:
+                    mots[mtn_key] = [{
+                        "name": f"ws_skin_{int(c['idx']):02d}",
+                        "file": "",
+                        "command": f"change_model {tgt_z}",
+                    }]
+
+            def target_mtn_for(c: Dict[str, object]) -> str:
+                return WS_SKIN_STAY_MTN if str(c["zname"]) == cur_zname else f"WS_Skin_{int(c['idx']):02d}"
+
+            # 3) 构建主切装菜单与分页子菜单
+            if use_categories:
+                # 顶级双分类菜单：Live2D 服装 / Spine 服装
+                root_entries = []
+                for lc, lang in lang_slots:
+                    ch: List[Tuple[str, str]] = [
+                        (_ws_ui_text(lang, "cat_l2d", n=len(l2d_items)), "Menu_WS_L2D_p1"),
+                        (_ws_ui_text(lang, "cat_spine", n=len(sp_items)), "Menu_WS_Spine_p1"),
+                    ]
+                    if is_live2d and "语音菜单" in mots:
+                        ch.append((_ws_ui_text(lang, "back_main"), "语音菜单"))
+                    elif has_bg_menu:
+                        ch.append((_ws_ui_text(lang, "bg_entry"), "背景菜单"))
+                    ch.append((_ws_ui_text(lang, "close"), WS_SKIN_CLOSE_MTN))
+                    root_entries.append(
+                        make_menu_entry(
+                            is_live2d, silent_zname, "menu_ws_skins",
+                            _ws_ui_text(lang, "hdr_cat", n=total), ch, lc
+                        )
+                    )
+                mots[WS_SKIN_MENU_ROOT] = root_entries
+
+                # 分类分页子菜单
+                for cat_tag, cat_list, hdr_multi, hdr_single in (
+                    ("L2D", l2d_items, "hdr_l2d", "hdr_l2d_1"),
+                    ("Spine", sp_items, "hdr_spine", "hdr_spine_1"),
+                ):
+                    n_pages = max(1, (len(cat_list) + WS_SKIN_PAGE_SIZE - 1) // WS_SKIN_PAGE_SIZE)
+                    for pg in range(1, n_pages + 1):
+                        sub_list = cat_list[(pg - 1) * WS_SKIN_PAGE_SIZE : pg * WS_SKIN_PAGE_SIZE]
+                        grp_name = f"Menu_WS_{cat_tag}_p{pg}"
+                        pg_entries = []
+                        for lc, lang in lang_slots:
+                            ch = [
+                                (skin_label(c, lang, include_engine=False, is_cur=(str(c["zname"]) == cur_zname)), target_mtn_for(c))
+                                for c in sub_list
+                            ]
+                            if pg < n_pages:
+                                ch.append((_ws_ui_text(lang, "next_page", p=pg + 1, total=n_pages), f"Menu_WS_{cat_tag}_p{pg + 1}"))
+                            if pg > 1:
+                                ch.append((_ws_ui_text(lang, "prev_page", p=pg - 1, total=n_pages), f"Menu_WS_{cat_tag}_p{pg - 1}"))
+                            ch.append((_ws_ui_text(lang, "back_cat"), WS_SKIN_MENU_ROOT))
+                            hdr = _ws_ui_text(lang, hdr_single) if n_pages == 1 else _ws_ui_text(lang, hdr_multi, p=pg, total=n_pages)
+                            pg_entries.append(
+                                make_menu_entry(is_live2d, silent_zname, grp_name.lower(), hdr, ch, lc)
+                            )
+                        mots[grp_name] = pg_entries
+            else:
+                # 少于等于 6 套或单引擎：直接分页列出所有服装
+                n_pages = max(1, (total + WS_SKIN_PAGE_SIZE - 1) // WS_SKIN_PAGE_SIZE)
+                include_eng = has_l2d and has_spine
+                for pg in range(1, n_pages + 1):
+                    sub_list = catalog[(pg - 1) * WS_SKIN_PAGE_SIZE : pg * WS_SKIN_PAGE_SIZE]
+                    grp_name = WS_SKIN_MENU_ROOT if pg == 1 else f"{WS_SKIN_MENU_ROOT}_p{pg}"
+                    pg_entries = []
+                    for lc, lang in lang_slots:
+                        ch = [
+                            (skin_label(c, lang, include_engine=include_eng, is_cur=(str(c["zname"]) == cur_zname)), target_mtn_for(c))
+                            for c in sub_list
+                        ]
+                        if pg < n_pages:
+                            ch.append((_ws_ui_text(lang, "next_page", p=pg + 1, total=n_pages), f"{WS_SKIN_MENU_ROOT}_p{pg + 1}"))
+                        if pg > 1:
+                            prev_grp = WS_SKIN_MENU_ROOT if pg - 1 == 1 else f"{WS_SKIN_MENU_ROOT}_p{pg - 1}"
+                            ch.append((_ws_ui_text(lang, "prev_page", p=pg - 1, total=n_pages), prev_grp))
+                        if is_live2d and "语音菜单" in mots:
+                            ch.append((_ws_ui_text(lang, "back_main"), "语音菜单"))
+                        elif has_bg_menu:
+                            ch.append((_ws_ui_text(lang, "bg_entry"), "背景菜单"))
+                        ch.append((_ws_ui_text(lang, "close"), WS_SKIN_CLOSE_MTN))
+                        dlc = _ws_ui_text(lang, "dlc_hint") if has_spine else ""
+                        hdr = _ws_ui_text(lang, "hdr_direct", n=total, dlc=dlc)
+                        pg_entries.append(
+                            make_menu_entry(is_live2d, silent_zname, grp_name.lower(), hdr, ch, lc)
+                        )
+                    mots[grp_name] = pg_entries
+
+            # 4) 在现有菜单顶部/尾部注入入口 & Spine 空白点击 `tap` 菜单 & 绑定 F2 / S 快捷键
+            entry_key = "entry_both" if (has_l2d and has_spine) else "entry_single"
+            if is_live2d:
+                for host_grp in ("Tap", "语音菜单"):
+                    for it in mots.get(host_grp) or []:
+                        if not isinstance(it, dict):
+                            continue
+                        chs = it.get("Choices")
+                        if not isinstance(chs, list):
+                            continue
+                        if any(isinstance(c, dict) and c.get("NextMtn") == WS_SKIN_MENU_ROOT for c in chs):
+                            continue
+                        lang = _lang_bucket(it.get("Language"))
+                        chs.insert(0, {
+                            "Text": _ws_ui_text(lang, entry_key, n=total),
+                            "NextMtn": WS_SKIN_MENU_ROOT,
+                        })
+                ctrls = data.setdefault("Controllers", {})
+                kt = ctrls.setdefault("KeyTrigger", {"Enabled": True, "Items": []})
+                kt["Enabled"] = True
+                kt_items = kt.setdefault("Items", [])
+                used_vk = {it.get("Input") for it in kt_items if isinstance(it, dict)}
+                for vk in WS_SKIN_HOTKEYS:
+                    if vk not in used_vk:
+                        kt_items.append({"Input": vk, "DownMtn": WS_SKIN_MENU_ROOT})
+            else:
+                if has_bg_menu:
+                    for it in mots.get("背景菜单") or []:
+                        if not isinstance(it, dict):
+                            continue
+                        chs = it.get("choices")
+                        if not isinstance(chs, list):
+                            continue
+                        if any(isinstance(c, dict) and c.get("next_mtn") == WS_SKIN_MENU_ROOT for c in chs):
+                            continue
+                        lang = _lang_bucket(it.get("language"))
+                        chs.append({
+                            "text": _ws_ui_text(lang, entry_key, n=total),
+                            "next_mtn": WS_SKIN_MENU_ROOT,
+                        })
+                    # Spine 空白点击 `tap` 快捷菜单（服装切换 + 背景开关 + 关闭）
+                    mots["tap"] = [
+                        make_menu_entry(
+                            False, None, "tap_quick_menu",
+                            _ws_ui_text(lang, "hdr_tap_sp"),
+                            [
+                                (_ws_ui_text(lang, entry_key, n=total), WS_SKIN_MENU_ROOT),
+                                (_ws_ui_text(lang, "bg_entry"), "背景菜单"),
+                                (_ws_ui_text(lang, "close"), WS_SKIN_CLOSE_MTN),
+                            ],
+                            lc,
+                        )
+                        for lc, lang in lang_slots
+                    ]
+                else:
+                    # 无背景开关的原皮 Spine：点击空白处直接弹出服装切换菜单
+                    mots["tap"] = [dict(x, name="tap_ws_skins") for x in mots[WS_SKIN_MENU_ROOT]]
+
+                ctrls = data.setdefault("controllers", {})
+                kt = ctrls.setdefault("key_trigger", {"enabled": True, "items": []})
+                kt["enabled"] = True
+                kt_items = kt.setdefault("items", [])
+                used_vk = {it.get("input") for it in kt_items if isinstance(it, dict)}
+                for vk in WS_SKIN_HOTKEYS:
+                    if vk not in used_vk:
+                        kt_items.append({"input": vk, "down_mtn": WS_SKIN_MENU_ROOT})
 
     def _stage_skin_dir(self, src_dir: Path, dst_dir: Path, is_live2d: bool) -> None:
         """构建 EX Studio 暂存皮肤目录：不可变文件硬链接，音频去重指向 ../audio/ 或 ../bgm/，配置文件重写。"""
@@ -664,17 +1092,43 @@ class DollPacker:
         stage_costumes = []
         lpk_costumes = []
 
+        skin_names_set = {sk for sk, _, _ in self.l2d_skins} | {sk for sk, _, _ in self.spine_skins}
+        if self.skin_i18n is not None:
+            zh_to_en, zh_to_ja = self.skin_i18n
+        else:
+            zh_to_en, zh_to_ja = load_skin_i18n_maps(skin_names_set)
+
         for sk, folder_name, src_dir in self.l2d_skins:
             self._stage_skin_dir(src_dir, self.stage_dir / folder_name, is_live2d=True)
             stage_costumes.append({"name": f"Live2D - {sk}", "path": f"{folder_name}/.model3.json"})
             z_cfg = self._register_cfg_name(src_dir / ".model3.json", is_live2d=True)
+            idx = len(lpk_costumes)
             lpk_costumes.append({"name": f"Live2D - {sk}", "path": z_cfg})
+            self.costume_catalog.append({
+                "idx": idx,
+                "engine": "live2d",
+                "skin_zh": sk,
+                "skin_en": zh_to_en.get(sk, sk),
+                "skin_ja": zh_to_ja.get(sk, sk),
+                "zname": z_cfg,
+            })
+            self.main_cfg_znames.add(z_cfg)
 
         for sk, folder_name, src_dir in self.spine_skins:
             self._stage_skin_dir(src_dir, self.stage_dir / folder_name, is_live2d=False)
             stage_costumes.append({"name": f"Spine - {sk}", "path": f"{folder_name}/.config.json"})
             z_cfg = self._register_cfg_name(src_dir / ".config.json", is_live2d=False)
+            idx = len(lpk_costumes)
             lpk_costumes.append({"name": f"Spine - {sk}", "path": z_cfg})
+            self.costume_catalog.append({
+                "idx": idx,
+                "engine": "spine",
+                "skin_zh": sk,
+                "skin_en": zh_to_en.get(sk, sk),
+                "skin_ja": zh_to_ja.get(sk, sk),
+                "zname": z_cfg,
+            })
+            self.main_cfg_znames.add(z_cfg)
 
         # 写 staging config.mlve
         stage_mlve = {
@@ -700,6 +1154,11 @@ class DollPacker:
         while self.cfg_queue:
             cfg_abs, is_l2d = self.cfg_queue.pop(0)
             self._process_cfg_for_lpk(cfg_abs, is_l2d)
+
+        # 5.5 为多服装角色包注入原生四语「👗 切换服装」菜单与 F2 / S 快捷键，并序列化全部配置
+        self._inject_workshop_costume_menus()
+        for zname, (cfg_obj, _, _) in self.packed_cfg_objs.items():
+            self.zip_entries[zname] = (compact_json_bytes(cfg_obj), zipfile.ZIP_DEFLATED)
 
         # 6. 加入 avatar 与 config.mlve
         self.zip_entries[AVATAR_ZIP_NAME] = (avatar_stage, zipfile.ZIP_STORED)
@@ -768,8 +1227,8 @@ class DollPacker:
         }
 
 
-def pack_one_doll(doll: str) -> Dict[str, object]:
-    return DollPacker(doll).run()
+def pack_one_doll(doll: str, skin_i18n: Optional[Tuple[Dict[str, str], Dict[str, str]]] = None) -> Dict[str, object]:
+    return DollPacker(doll, skin_i18n=skin_i18n).run()
 
 
 def discover_all_dolls() -> List[str]:
@@ -780,6 +1239,18 @@ def discover_all_dolls() -> List[str]:
                 if p.is_dir():
                     dolls.add(p.name)
     return sorted(dolls)
+
+
+def collect_target_skin_names(targets: List[str]) -> Set[str]:
+    names: Set[str] = set()
+    for d in targets:
+        for root in (LIVE2D_ROOT, SPINE_ROOT):
+            dd = root / d
+            if dd.is_dir():
+                for p in dd.iterdir():
+                    if p.is_dir():
+                        names.add(p.name)
+    return names
 
 
 def main():
@@ -796,12 +1267,13 @@ def main():
         sys.exit(1)
 
     t_start = time.time()
-    print(f"Starting Workshop LPK build & pack for {len(targets)} doll(s) (workers={args.workers})...")
+    skin_i18n = load_skin_i18n_maps(collect_target_skin_names(targets))
+    print(f"Starting Workshop LPK build & pack for {len(targets)} doll(s) (workers={args.workers}, i18n_en={len(skin_i18n[0])}, i18n_ja={len(skin_i18n[1])})...")
     results: List[Dict[str, object]] = []
 
     if args.workers <= 1 or len(targets) == 1:
         for d in targets:
-            res = pack_one_doll(d)
+            res = pack_one_doll(d, skin_i18n)
             results.append(res)
             print(
                 f"  [OK] {res['doll']:8s} | cos={res['total_costumes']:2d} (L2D={res['l2d_skins']},Sp={res['spine_skins']}) "
@@ -810,7 +1282,7 @@ def main():
             )
     else:
         with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as ex:
-            fut_map = {ex.submit(pack_one_doll, d): d for d in targets}
+            fut_map = {ex.submit(pack_one_doll, d, skin_i18n): d for d in targets}
             for fut in concurrent.futures.as_completed(fut_map):
                 d = fut_map[fut]
                 res = fut.result()
